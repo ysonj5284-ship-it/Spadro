@@ -31,7 +31,24 @@ export default function Hero() {
 
     function setupScrub() {
       if (!video || !video.duration) return;
-      video.currentTime = 0;
+
+      // Mobile Safari (and some Android browsers) won't reliably apply
+      // programmatic currentTime seeks until the video has actually been
+      // played once. A muted play is allowed without a user gesture, so
+      // prime it here, then pause immediately and rewind to frame 0.
+      const primePromise = video.play();
+      if (primePromise) {
+        primePromise
+          .then(() => {
+            video.pause();
+            video.currentTime = 0;
+          })
+          .catch(() => {
+            video.currentTime = 0;
+          });
+      } else {
+        video.currentTime = 0;
+      }
 
       // Tween currentTime instead of snapping it, so each scroll tick eases
       // into the target frame rather than jumping straight there.
