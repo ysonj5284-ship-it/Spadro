@@ -109,6 +109,7 @@ export default function Hero() {
             poster={HERO_LANDING}
             className="absolute inset-0 h-full w-full object-cover"
           >
+            <source media="(max-width: 768px)" src="/video/spadro-hero-mobile.mp4" type="video/mp4" />
             <source src="/video/spadro-hero.mp4" type="video/mp4" />
           </video>
           <div
@@ -125,13 +126,13 @@ export default function Hero() {
           style={showStaticFallback ? {} : { opacity: 0 }}
         >
           <h1
-            className="font-serif text-5xl italic tracking-tightest text-cream sm:text-7xl md:text-8xl"
+            className="font-serif text-4xl italic tracking-tightest text-cream sm:text-7xl md:text-8xl"
             style={{ textShadow: "0 4px 20px rgba(0,0,0,0.85)" }}
           >
             The Art of Doing Nothing
           </h1>
           <p
-            className="mt-6 font-sans text-sm font-medium uppercase tracking-[0.25em] text-cream sm:text-base"
+            className="mt-6 font-sans text-xs font-medium uppercase tracking-[0.25em] text-cream sm:text-base"
             style={{ textShadow: "0 2px 12px rgba(0,0,0,0.85)" }}
           >
             SPADRO &middot; Ritual bodywork, undone slowly

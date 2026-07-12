@@ -85,7 +85,7 @@ export default function Gallery() {
         className="relative mt-16 flex h-screen w-full items-center justify-center"
       >
         <div
-          className="relative h-[70vh] w-full max-w-4xl sm:h-[78vh]"
+          className="relative h-[45vh] w-full max-w-4xl sm:h-[78vh]"
           style={{ perspective: "1600px" }}
         >
           {shots.map((s, i) => (

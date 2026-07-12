@@ -7,6 +7,10 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 gsap.registerPlugin(ScrollTrigger);
 
+// Mobile browsers resize the viewport when the URL bar hides/shows, which
+// re-measures every pin and makes sections jump mid-scroll.
+ScrollTrigger.config({ ignoreMobileResize: true });
+
 export default function SmoothScroll() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;

@@ -120,7 +120,7 @@ export default function Treatments() {
         ref={pinRef}
         className="relative flex h-screen w-full items-center justify-center px-6 md:px-16 lg:px-24"
       >
-        <h2 className="absolute left-1/2 top-16 -translate-x-1/2 whitespace-nowrap font-serif text-4xl italic text-cream sm:text-5xl">
+        <h2 className="absolute left-1/2 top-12 -translate-x-1/2 whitespace-nowrap font-serif text-3xl italic text-cream sm:top-16 sm:text-5xl">
           Choose Your Ritual
         </h2>
         <div
@@ -137,7 +137,7 @@ export default function Treatments() {
               style={{ transformStyle: "preserve-3d" }}
             >
               <div className="text-center md:text-left">
-                <h3 className="font-serif text-5xl italic sm:text-6xl md:text-7xl">
+                <h3 className="font-serif text-4xl italic sm:text-6xl md:text-7xl">
                   {t.name.split(" ").map((word, j) => (
                     <span
                       key={j}

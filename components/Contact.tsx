@@ -42,7 +42,7 @@ export default function Contact() {
             {Array.from({ length: 8 }).map((_, i) => (
               <span
                 key={i}
-                className="mx-6 font-serif text-4xl italic text-cream sm:text-5xl"
+                className="mx-6 font-serif text-3xl italic text-cream sm:text-5xl"
               >
                 Reserve Your Ritual
                 <span className="ml-6 text-rose">&middot;</span>
