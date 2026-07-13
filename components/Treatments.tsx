@@ -120,7 +120,7 @@ export default function Treatments() {
         ref={pinRef}
         className="relative flex h-screen w-full items-center justify-center px-6 md:px-16 lg:px-24"
       >
-        <h2 className="absolute left-1/2 top-28 -translate-x-1/2 whitespace-nowrap font-serif text-3xl italic text-cream underline decoration-rose/60 decoration-2 underline-offset-8 sm:top-16 sm:text-5xl">
+        <h2 className="absolute left-1/2 top-[5.5rem] -translate-x-1/2 whitespace-nowrap font-serif text-3xl italic text-cream underline decoration-rose/60 decoration-2 underline-offset-8 sm:top-16 sm:text-5xl">
           Choose Your Ritual
         </h2>
         <div
