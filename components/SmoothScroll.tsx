@@ -30,6 +30,10 @@ export default function SmoothScroll() {
     gsap.ticker.add((time) => lenis.raf(time * 1000));
     gsap.ticker.lagSmoothing(0);
 
+    // Header logo needs to scroll to top through Lenis, not window.scrollTo
+    // directly — Lenis owns the scroll loop and would just fight a native jump.
+    (window as any).__lenis = lenis;
+
     // Lazy-loaded images below the fold change document height after pins
     // are created; re-measure once everything has actually loaded so pinned
     // sections don't drift into/overlap each other.
@@ -40,6 +44,7 @@ export default function SmoothScroll() {
       window.removeEventListener("load", onLoad);
       lenis.destroy();
       gsap.ticker.remove((time) => lenis.raf(time * 1000));
+      delete (window as any).__lenis;
     };
   }, []);
 

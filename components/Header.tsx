@@ -14,9 +14,16 @@ export default function Header() {
 
   return (
     <header className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-6 py-6 md:px-16 lg:px-24">
-      <span className="rounded-full border border-rose/40 bg-espresso-deep/40 px-5 py-2 font-sans text-xs uppercase tracking-[0.25em] text-cream backdrop-blur-sm">
+      <button
+        onClick={() => {
+          const lenis = (window as any).__lenis;
+          if (lenis) lenis.scrollTo(0);
+          else window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        className="rounded-full border border-rose/40 bg-espresso-deep/40 px-5 py-2 font-sans text-xs uppercase tracking-[0.25em] text-cream backdrop-blur-sm"
+      >
         SPADRO
-      </span>
+      </button>
 
       <div className="relative">
         <button
