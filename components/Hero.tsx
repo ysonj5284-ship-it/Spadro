@@ -9,13 +9,13 @@ gsap.registerPlugin(ScrollTrigger);
 const HERO_LANDING = "/images/hero-landing.jpg";
 const POSTER_EXPLODED = "/frames/frame_151.jpg";
 
-// Portrait-cropped JPEG frames extracted from the hero video at full source
-// height — on mobile the video is scrubbed by drawing these onto a canvas,
-// because seeking a paused <video> doesn't repaint on several mobile
+// WebP frames extracted at native resolution from the dedicated 9:16 mobile
+// hero video — on mobile the video is scrubbed by drawing these onto a
+// canvas, because seeking a paused <video> doesn't repaint on several mobile
 // browsers, while a canvas draw IS the repaint and works everywhere.
-const MOBILE_FRAME_COUNT = 121;
+const MOBILE_FRAME_COUNT = 150;
 const mobileFrameSrc = (i: number) =>
-  `/hero-mobile-frames/frame_${String(i + 1).padStart(3, "0")}.jpg`;
+  `/hero-mobile-frames/frame_${String(i + 1).padStart(3, "0")}.webp`;
 
 export default function Hero() {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -200,7 +200,12 @@ export default function Hero() {
           <div
             ref={landingRef}
             className="pointer-events-none absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url(${HERO_LANDING})` }}
+            style={{
+              // The mobile video opens on its own intact-rose scene, so its
+              // first frame is the landing image there; desktop keeps the
+              // landscape landing still.
+              backgroundImage: `url(${isMobile ? mobileFrameSrc(0) : HERO_LANDING})`,
+            }}
           />
         </>
       )}
