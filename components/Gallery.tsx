@@ -4,7 +4,6 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import Reveal from "./Reveal";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -73,19 +72,16 @@ export default function Gallery() {
   }, []);
 
   return (
-    <section id="gallery" className="bg-espresso px-6 pt-28 md:px-16 lg:px-24">
-      <Reveal>
-        <h2 className="text-center font-serif text-4xl italic text-cream sm:text-5xl">
-          Studio Gallery
-        </h2>
-      </Reveal>
-
+    <section id="gallery" className="bg-espresso px-6 md:px-16 lg:px-24">
       <div
         ref={pinRef}
-        className="relative mt-16 flex h-screen w-full items-center justify-center"
+        className="relative flex h-screen w-full items-center justify-center"
       >
+        <h2 className="absolute left-1/2 top-28 -translate-x-1/2 whitespace-nowrap font-serif text-4xl italic text-cream sm:top-16 sm:text-5xl">
+          Studio Gallery
+        </h2>
         <div
-          className="relative h-[45vh] w-full max-w-4xl sm:h-[78vh]"
+          className="relative mt-16 h-[45vh] w-full max-w-4xl sm:mt-20 sm:h-[68vh]"
           style={{ perspective: "1600px" }}
         >
           {shots.map((s, i) => (
