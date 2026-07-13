@@ -18,6 +18,12 @@ export default function SmoothScroll() {
     const lenis = new Lenis({
       duration: 1.1,
       smoothWheel: true,
+      // Lenis leaves touch scrolling native by default (syncTouch: false),
+      // which desyncs from ScrollTrigger's scroll tracking and is why the
+      // pinned Hero/Treatments/Gallery sections weren't holding on mobile —
+      // this makes touch scroll go through the same virtual position Lenis
+      // uses for wheel scroll, which ScrollTrigger.update stays in sync with.
+      syncTouch: true,
     });
 
     lenis.on("scroll", ScrollTrigger.update);
