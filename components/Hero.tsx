@@ -98,7 +98,7 @@ export default function Hero() {
         if (tenth !== lastLoggedTenth) {
           lastLoggedTenth = tenth;
           log(
-            `progress=${self.progress.toFixed(2)} isActive=${self.isActive} pinned=${!!st?.pin} t=${video.currentTime.toFixed(2)}/${video.duration ? video.duration.toFixed(2) : "?"}`
+            `progress=${self.progress.toFixed(2)} isActive=${self.isActive} t=${video.currentTime.toFixed(2)}/${video.duration ? video.duration.toFixed(2) : "?"}`
           );
         }
 
