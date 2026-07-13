@@ -133,7 +133,7 @@ export default function Treatments() {
               ref={(el) => {
                 if (el) cardRefs.current[i] = el;
               }}
-              className="absolute inset-0 grid grid-cols-1 items-center gap-8 will-change-transform md:grid-cols-2 md:gap-16"
+              className="absolute inset-0 grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] items-center gap-6 will-change-transform md:grid-cols-2 md:grid-rows-1 md:gap-16"
               style={{ transformStyle: "preserve-3d" }}
             >
               <div className="text-center md:text-left">
@@ -173,7 +173,7 @@ export default function Treatments() {
                 </p>
               </div>
 
-              <div className="relative hidden h-full w-full overflow-hidden rounded-[2rem] shadow-2xl shadow-black/50 md:block">
+              <div className="relative h-full w-full overflow-hidden rounded-[2rem] shadow-2xl shadow-black/50">
                 <Image
                   src={t.image}
                   alt={t.name}
