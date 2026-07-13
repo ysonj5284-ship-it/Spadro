@@ -25,82 +25,81 @@ export default function Hero() {
     const video = videoRef.current;
     if (!video) return;
 
-    let st: ScrollTrigger | null = null;
     let rafId: number | null = null;
     let pendingProgress = 0;
+    let seek: ((value: number) => void) | null = null;
 
-    function setupScrub() {
-      if (!video || !video.duration) return;
+    // Mobile Safari (and some Android browsers) won't reliably apply
+    // programmatic currentTime seeks until the video has actually been
+    // played once. A muted play is allowed without a user gesture, so
+    // prime it here, then pause immediately and rewind to frame 0. This
+    // runs in parallel with pin setup below rather than blocking it.
+    const primePromise = video.play();
+    (primePromise ?? Promise.resolve()).catch(() => {}).then(() => {
+      video.pause();
+      video.currentTime = 0;
+    });
 
-      // Mobile Safari (and some Android browsers) won't reliably apply
-      // programmatic currentTime seeks until the video has actually been
-      // played once. A muted play is allowed without a user gesture, so
-      // prime it here, then pause immediately and rewind to frame 0.
-      const primePromise = video.play();
-      if (primePromise) {
-        primePromise
-          .then(() => {
-            video.pause();
-            video.currentTime = 0;
-          })
-          .catch(() => {
-            video.currentTime = 0;
-          });
-      } else {
-        video.currentTime = 0;
-      }
-
-      // Tween currentTime instead of snapping it, so each scroll tick eases
-      // into the target frame rather than jumping straight there.
-      const seek = gsap.quickTo(video, "currentTime", {
+    // The quickTo tween needs video.duration, which isn't available until
+    // metadata loads — but it's created lazily inside onUpdate/here rather
+    // than gating the whole pin setup behind that event.
+    const ensureSeekReady = () => {
+      if (seek || !video.duration) return;
+      seek = gsap.quickTo(video, "currentTime", {
         duration: 0.4,
         ease: "power2.out",
       });
-
-      st = ScrollTrigger.create({
-        trigger: sectionRef.current,
-        start: "top top",
-        end: "+=250%",
-        scrub: 1.5,
-        pin: true,
-        onUpdate: (self) => {
-          pendingProgress = self.progress;
-
-          if (rafId === null) {
-            rafId = requestAnimationFrame(() => {
-              seek(pendingProgress * video.duration);
-              rafId = null;
-            });
-          }
-
-          const revealProgress = gsap.utils.clamp(0, 1, (self.progress - 0.75) / 0.25);
-          gsap.set(headlineRef.current, {
-            opacity: revealProgress,
-            y: 24 * (1 - revealProgress),
-          });
-
-          // The static landing image covers the video until scrolling
-          // begins, then quickly fades to reveal the scrub underneath.
-          const landingOpacity = 1 - gsap.utils.clamp(0, 1, self.progress / 0.08);
-          gsap.set(landingRef.current, { opacity: landingOpacity });
-        },
-      });
-    }
-
-    if (video.readyState >= 1) {
-      setupScrub();
-    } else {
-      video.addEventListener("loadedmetadata", setupScrub, { once: true });
-    }
+    };
+    if (video.readyState >= 1) ensureSeekReady();
+    video.addEventListener("loadedmetadata", ensureSeekReady);
 
     const onError = () => setVideoFailed(true);
     video.addEventListener("error", onError);
 
+    // The pin is created synchronously on mount, same as every other
+    // pinned section on the page. Deferring this behind the video's async
+    // loadedmetadata event (as before) let the user scroll past Hero's
+    // "top top" start on mobile before the pin existed — by the time it
+    // engaged late, its pin-spacer shifted the whole document down,
+    // invalidating Treatments'/Gallery's already-measured scroll positions
+    // and causing the sections to overlap.
+    const st = ScrollTrigger.create({
+      trigger: sectionRef.current,
+      start: "top top",
+      end: "+=250%",
+      scrub: 1.5,
+      pin: true,
+      onUpdate: (self) => {
+        pendingProgress = self.progress;
+
+        if (rafId === null) {
+          rafId = requestAnimationFrame(() => {
+            ensureSeekReady();
+            if (seek && video.duration) {
+              seek(pendingProgress * video.duration);
+            }
+            rafId = null;
+          });
+        }
+
+        const revealProgress = gsap.utils.clamp(0, 1, (self.progress - 0.75) / 0.25);
+        gsap.set(headlineRef.current, {
+          opacity: revealProgress,
+          y: 24 * (1 - revealProgress),
+        });
+
+        // The static landing image covers the video until scrolling
+        // begins, then quickly fades to reveal the scrub underneath.
+        const landingOpacity = 1 - gsap.utils.clamp(0, 1, self.progress / 0.08);
+        gsap.set(landingRef.current, { opacity: landingOpacity });
+      },
+    });
+
     return () => {
-      video.removeEventListener("loadedmetadata", setupScrub);
+      video.removeEventListener("loadedmetadata", ensureSeekReady);
       video.removeEventListener("error", onError);
       if (rafId) cancelAnimationFrame(rafId);
-      st?.kill();
+      st.kill();
     };
   }, []);
 
