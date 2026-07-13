@@ -9,54 +9,113 @@ gsap.registerPlugin(ScrollTrigger);
 const HERO_LANDING = "/images/hero-landing.jpg";
 const POSTER_EXPLODED = "/frames/frame_151.jpg";
 
+// Portrait-cropped JPEG frames extracted from the hero video at full source
+// height — on mobile the video is scrubbed by drawing these onto a canvas,
+// because seeking a paused <video> doesn't repaint on several mobile
+// browsers, while a canvas draw IS the repaint and works everywhere.
+const MOBILE_FRAME_COUNT = 121;
+const mobileFrameSrc = (i: number) =>
+  `/hero-mobile-frames/frame_${String(i + 1).padStart(3, "0")}.jpg`;
+
 export default function Hero() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const headlineRef = useRef<HTMLDivElement>(null);
   const landingRef = useRef<HTMLDivElement>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
+  // null until matchMedia runs on the client — neither the video nor the
+  // canvas renders before then, so phones never download the 12MB desktop
+  // video and desktops never download the mobile frame sequence.
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     setReducedMotion(mq.matches);
-    if (mq.matches) return;
+    if (!mq.matches) {
+      setIsMobile(window.matchMedia("(max-width: 768px)").matches);
+    }
+  }, []);
 
-    const video = videoRef.current;
-    if (!video) return;
+  useEffect(() => {
+    if (isMobile === null) return;
 
-    const onError = () => setVideoFailed(true);
-    video.addEventListener("error", onError);
+    let renderFrame: ((progress: number) => void) | null = null;
+    let cleanupMedia = () => {};
 
-    // Scroll-scrubbing a video (seeking currentTime frame-by-frame) relies
-    // on the browser repainting on every seek of a paused video — several
-    // mobile browsers don't reliably do that, leaving the frame frozen no
-    // matter how correctly currentTime is being set. Playing, however,
-    // repaints fine everywhere — so on mobile the video plays only while
-    // the user is actively scrolling and pauses the moment they stop.
-    // Only desktop gets the precise seek-based scrub.
-    const isMobile = window.matchMedia("(max-width: 768px)").matches;
-    video.currentTime = 0;
-    let pauseTimer: ReturnType<typeof setTimeout> | null = null;
+    if (isMobile) {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (canvas && ctx) {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(rect.width * dpr);
+        canvas.height = Math.round(rect.height * dpr);
+
+        const loaded: boolean[] = new Array(MOBILE_FRAME_COUNT).fill(false);
+        const frames: HTMLImageElement[] = [];
+        let lastDrawn = -1;
+
+        const drawCover = (img: HTMLImageElement) => {
+          const s = Math.max(canvas.width / img.width, canvas.height / img.height);
+          const w = img.width * s;
+          const h = img.height * s;
+          ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+        };
+
+        renderFrame = (progress) => {
+          let idx = Math.round(progress * (MOBILE_FRAME_COUNT - 1));
+          // if the exact frame hasn't arrived yet, show the nearest earlier
+          // one so the scrub degrades to slightly coarser, never to frozen
+          while (idx > 0 && !loaded[idx]) idx--;
+          if (!loaded[idx] || idx === lastDrawn) return;
+          lastDrawn = idx;
+          drawCover(frames[idx]);
+        };
+
+        for (let i = 0; i < MOBILE_FRAME_COUNT; i++) {
+          const img = new Image();
+          img.onload = () => {
+            loaded[i] = true;
+            if (i === 0) renderFrame?.(0);
+          };
+          img.src = mobileFrameSrc(i);
+          frames.push(img);
+        }
+      }
+    } else {
+      const video = videoRef.current;
+      if (video) {
+        const onError = () => setVideoFailed(true);
+        video.addEventListener("error", onError);
+        video.currentTime = 0;
+
+        let seek: ((value: number) => void) | null = null;
+        const ensureSeekReady = () => {
+          if (seek || !video.duration) return;
+          seek = gsap.quickTo(video, "currentTime", {
+            duration: 0.4,
+            ease: "power2.out",
+          });
+        };
+        if (video.readyState >= 1) ensureSeekReady();
+        video.addEventListener("loadedmetadata", ensureSeekReady);
+
+        renderFrame = (progress) => {
+          ensureSeekReady();
+          if (seek && video.duration) seek(progress * video.duration);
+        };
+        cleanupMedia = () => {
+          video.removeEventListener("loadedmetadata", ensureSeekReady);
+          video.removeEventListener("error", onError);
+        };
+      }
+    }
 
     let rafId: number | null = null;
     let pendingProgress = 0;
-    let seek: ((value: number) => void) | null = null;
 
-    const ensureSeekReady = () => {
-      if (isMobile || seek || !video.duration) return;
-      seek = gsap.quickTo(video, "currentTime", {
-        duration: 0.4,
-        ease: "power2.out",
-      });
-    };
-    if (video.readyState >= 1) ensureSeekReady();
-    video.addEventListener("loadedmetadata", ensureSeekReady);
-
-    // The pin is created synchronously on mount, same as every other
-    // pinned section on the page — deferring it behind an async event let
-    // the user scroll past Hero's "top top" start on mobile before the pin
-    // existed, which threw off every section's scroll-position math below it.
     const st = ScrollTrigger.create({
       trigger: sectionRef.current,
       start: "top top",
@@ -66,18 +125,9 @@ export default function Hero() {
       onUpdate: (self) => {
         pendingProgress = self.progress;
 
-        if (isMobile) {
-          if (self.progress > 0 && self.progress < 1) {
-            if (video.paused) video.play().catch(() => {});
-            if (pauseTimer) clearTimeout(pauseTimer);
-            pauseTimer = setTimeout(() => video.pause(), 200);
-          }
-        } else if (rafId === null) {
+        if (rafId === null) {
           rafId = requestAnimationFrame(() => {
-            ensureSeekReady();
-            if (seek && video.duration) {
-              seek(pendingProgress * video.duration);
-            }
+            renderFrame?.(pendingProgress);
             rafId = null;
           });
         }
@@ -95,14 +145,17 @@ export default function Hero() {
       },
     });
 
+    // This pin is created one render after mount (behind the matchMedia
+    // gate above), so re-measure the pinned sections below it once this
+    // pin-spacer is actually in the layout.
+    ScrollTrigger.refresh();
+
     return () => {
-      video.removeEventListener("loadedmetadata", ensureSeekReady);
-      video.removeEventListener("error", onError);
       if (rafId) cancelAnimationFrame(rafId);
-      if (pauseTimer) clearTimeout(pauseTimer);
+      cleanupMedia();
       st.kill();
     };
-  }, []);
+  }, [isMobile]);
 
   const showStaticFallback = reducedMotion || videoFailed;
 
@@ -118,18 +171,24 @@ export default function Hero() {
         />
       ) : (
         <>
-          <video
-            ref={videoRef}
-            muted
-            loop
-            playsInline
-            preload="auto"
-            poster={HERO_LANDING}
-            className="absolute inset-0 h-full w-full object-cover"
-          >
-            <source media="(max-width: 768px)" src="/video/spadro-hero-mobile.mp4" type="video/mp4" />
-            <source src="/video/spadro-hero.mp4" type="video/mp4" />
-          </video>
+          {isMobile === false && (
+            <video
+              ref={videoRef}
+              muted
+              playsInline
+              preload="auto"
+              poster={HERO_LANDING}
+              className="absolute inset-0 h-full w-full object-cover"
+            >
+              <source src="/video/spadro-hero.mp4" type="video/mp4" />
+            </video>
+          )}
+          {isMobile === true && (
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 h-full w-full"
+            />
+          )}
           <div
             ref={landingRef}
             className="pointer-events-none absolute inset-0 bg-cover bg-center"
