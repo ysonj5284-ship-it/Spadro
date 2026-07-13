@@ -16,14 +16,6 @@ export default function Hero() {
   const landingRef = useRef<HTMLDivElement>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
-  const [debug, setDebug] = useState<string[]>([]);
-  const debugOn =
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
-
-  const log = (msg: string) => {
-    if (!debugOn) return;
-    setDebug((prev) => [...prev.slice(-9), `${new Date().toISOString().slice(11, 19)} ${msg}`]);
-  };
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -33,82 +25,40 @@ export default function Hero() {
     const video = videoRef.current;
     if (!video) return;
 
-    log(`mount readyState=${video.readyState} src=${video.currentSrc.split("/").pop()}`);
+    const onError = () => setVideoFailed(true);
+    video.addEventListener("error", onError);
+
+    // Scroll-scrubbing a video (seeking currentTime frame-by-frame) relies
+    // on the browser repainting on every seek of a paused video — several
+    // mobile browsers don't reliably do that, leaving the frame frozen no
+    // matter how correctly currentTime is being set. Rather than fight that,
+    // mobile just autoplays the video normally on loop; only desktop gets
+    // the precise scroll-scrub.
+    const isMobile = window.matchMedia("(max-width: 768px)").matches;
+    if (isMobile) {
+      video.play().catch(() => {});
+    } else {
+      video.currentTime = 0;
+    }
 
     let rafId: number | null = null;
     let pendingProgress = 0;
     let seek: ((value: number) => void) | null = null;
-    let lastLoggedTenth = -1;
-    let lastNudge = 0;
-    let nudging = false;
 
-    // Some mobile browsers (notably Android Chrome) update a paused video's
-    // currentTime property without ever repainting the visible frame —
-    // seeking numerically "succeeds" but the screen stays frozen. Briefly
-    // playing and pausing forces the decoder to actually paint the frame at
-    // the new position. Throttled so it doesn't fire on every rAF tick.
-    const nudge = () => {
-      const now = performance.now();
-      if (nudging || now - lastNudge < 120) return;
-      nudging = true;
-      lastNudge = now;
-      video
-        .play()
-        .then(() => {
-          video.pause();
-          log(`nudged at t=${video.currentTime.toFixed(2)}`);
-        })
-        .catch((e) => log(`nudge play() rejected: ${e?.name || e}`))
-        .finally(() => {
-          nudging = false;
-        });
-    };
-
-    // Mobile Safari (and some Android browsers) won't reliably apply
-    // programmatic currentTime seeks until the video has actually been
-    // played once. A muted play is allowed without a user gesture, so
-    // prime it here, then pause immediately and rewind to frame 0. This
-    // runs in parallel with pin setup below rather than blocking it.
-    const primePromise = video.play();
-    (primePromise ?? Promise.resolve())
-      .then(() => log("prime play() resolved"))
-      .catch((e) => log(`prime play() rejected: ${e?.name || e}`))
-      .then(() => {
-        video.pause();
-        video.currentTime = 0;
-      });
-
-    // The quickTo tween needs video.duration, which isn't available until
-    // metadata loads — but it's created lazily inside onUpdate/here rather
-    // than gating the whole pin setup behind that event.
     const ensureSeekReady = () => {
-      if (seek || !video.duration) return;
-      log(`seek ready, duration=${video.duration.toFixed(2)}`);
+      if (isMobile || seek || !video.duration) return;
       seek = gsap.quickTo(video, "currentTime", {
         duration: 0.4,
         ease: "power2.out",
       });
     };
-    const onLoadedMetadata = () => {
-      log("loadedmetadata fired");
-      ensureSeekReady();
-    };
     if (video.readyState >= 1) ensureSeekReady();
-    video.addEventListener("loadedmetadata", onLoadedMetadata);
-
-    const onError = () => {
-      log(`video error: ${video.error?.code} ${video.error?.message}`);
-      setVideoFailed(true);
-    };
-    video.addEventListener("error", onError);
+    video.addEventListener("loadedmetadata", ensureSeekReady);
 
     // The pin is created synchronously on mount, same as every other
-    // pinned section on the page. Deferring this behind the video's async
-    // loadedmetadata event (as before) let the user scroll past Hero's
-    // "top top" start on mobile before the pin existed — by the time it
-    // engaged late, its pin-spacer shifted the whole document down,
-    // invalidating Treatments'/Gallery's already-measured scroll positions
-    // and causing the sections to overlap.
+    // pinned section on the page — deferring it behind an async event let
+    // the user scroll past Hero's "top top" start on mobile before the pin
+    // existed, which threw off every section's scroll-position math below it.
     const st = ScrollTrigger.create({
       trigger: sectionRef.current,
       start: "top top",
@@ -118,20 +68,11 @@ export default function Hero() {
       onUpdate: (self) => {
         pendingProgress = self.progress;
 
-        const tenth = Math.floor(self.progress * 10);
-        if (tenth !== lastLoggedTenth) {
-          lastLoggedTenth = tenth;
-          log(
-            `progress=${self.progress.toFixed(2)} isActive=${self.isActive} t=${video.currentTime.toFixed(2)}/${video.duration ? video.duration.toFixed(2) : "?"}`
-          );
-        }
-
-        if (rafId === null) {
+        if (!isMobile && rafId === null) {
           rafId = requestAnimationFrame(() => {
             ensureSeekReady();
             if (seek && video.duration) {
               seek(pendingProgress * video.duration);
-              nudge();
             }
             rafId = null;
           });
@@ -144,14 +85,14 @@ export default function Hero() {
         });
 
         // The static landing image covers the video until scrolling
-        // begins, then quickly fades to reveal the scrub underneath.
+        // begins, then quickly fades to reveal the video underneath.
         const landingOpacity = 1 - gsap.utils.clamp(0, 1, self.progress / 0.08);
         gsap.set(landingRef.current, { opacity: landingOpacity });
       },
     });
 
     return () => {
-      video.removeEventListener("loadedmetadata", onLoadedMetadata);
+      video.removeEventListener("loadedmetadata", ensureSeekReady);
       video.removeEventListener("error", onError);
       if (rafId) cancelAnimationFrame(rafId);
       st.kill();
@@ -175,6 +116,7 @@ export default function Hero() {
           <video
             ref={videoRef}
             muted
+            loop
             playsInline
             preload="auto"
             poster={HERO_LANDING}
@@ -210,14 +152,6 @@ export default function Hero() {
           </p>
         </div>
       </div>
-
-      {debugOn && (
-        <div className="pointer-events-none absolute inset-x-2 bottom-2 z-50 max-h-40 overflow-hidden rounded bg-black/80 p-2 font-mono text-[9px] leading-tight text-lime-400">
-          {debug.map((line, i) => (
-            <div key={i}>{line}</div>
-          ))}
-        </div>
-      )}
     </section>
   );
 }
