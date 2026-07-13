@@ -23,6 +23,10 @@ export default function Hero() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const headlineRef = useRef<HTMLDivElement>(null);
   const landingRef = useRef<HTMLDivElement>(null);
+  // The pin's onUpdate calls whatever renderer is wired in here — the video
+  // seeker on desktop, the canvas frame drawer on mobile. Kept in a ref so
+  // the pin itself never has to wait for the media element to exist.
+  const renderFrameRef = useRef<((progress: number) => void) | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
   // null until matchMedia runs on the client — neither the video nor the
@@ -30,88 +34,17 @@ export default function Hero() {
   // video and desktops never download the mobile frame sequence.
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
 
+  // The pin MUST be created synchronously on first mount: ScrollTrigger
+  // refreshes pins in creation order, so a pin high on the page that is
+  // created after the pins below it makes every lower section mis-measure
+  // and overlap. Only the media renderer (which needs the video/canvas
+  // element from the next render) is deferred, via renderFrameRef.
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     setReducedMotion(mq.matches);
-    if (!mq.matches) {
-      setIsMobile(window.matchMedia("(max-width: 768px)").matches);
-    }
-  }, []);
+    if (mq.matches) return;
 
-  useEffect(() => {
-    if (isMobile === null) return;
-
-    let renderFrame: ((progress: number) => void) | null = null;
-    let cleanupMedia = () => {};
-
-    if (isMobile) {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
-      if (canvas && ctx) {
-        const rect = canvas.getBoundingClientRect();
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = Math.round(rect.width * dpr);
-        canvas.height = Math.round(rect.height * dpr);
-
-        const loaded: boolean[] = new Array(MOBILE_FRAME_COUNT).fill(false);
-        const frames: HTMLImageElement[] = [];
-        let lastDrawn = -1;
-
-        const drawCover = (img: HTMLImageElement) => {
-          const s = Math.max(canvas.width / img.width, canvas.height / img.height);
-          const w = img.width * s;
-          const h = img.height * s;
-          ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
-        };
-
-        renderFrame = (progress) => {
-          let idx = Math.round(progress * (MOBILE_FRAME_COUNT - 1));
-          // if the exact frame hasn't arrived yet, show the nearest earlier
-          // one so the scrub degrades to slightly coarser, never to frozen
-          while (idx > 0 && !loaded[idx]) idx--;
-          if (!loaded[idx] || idx === lastDrawn) return;
-          lastDrawn = idx;
-          drawCover(frames[idx]);
-        };
-
-        for (let i = 0; i < MOBILE_FRAME_COUNT; i++) {
-          const img = new Image();
-          img.onload = () => {
-            loaded[i] = true;
-            if (i === 0) renderFrame?.(0);
-          };
-          img.src = mobileFrameSrc(i);
-          frames.push(img);
-        }
-      }
-    } else {
-      const video = videoRef.current;
-      if (video) {
-        const onError = () => setVideoFailed(true);
-        video.addEventListener("error", onError);
-        video.currentTime = 0;
-
-        let seek: ((value: number) => void) | null = null;
-        const ensureSeekReady = () => {
-          if (seek || !video.duration) return;
-          seek = gsap.quickTo(video, "currentTime", {
-            duration: 0.4,
-            ease: "power2.out",
-          });
-        };
-        if (video.readyState >= 1) ensureSeekReady();
-        video.addEventListener("loadedmetadata", ensureSeekReady);
-
-        renderFrame = (progress) => {
-          ensureSeekReady();
-          if (seek && video.duration) seek(progress * video.duration);
-        };
-        cleanupMedia = () => {
-          video.removeEventListener("loadedmetadata", ensureSeekReady);
-          video.removeEventListener("error", onError);
-        };
-      }
-    }
+    setIsMobile(window.matchMedia("(max-width: 768px)").matches);
 
     let rafId: number | null = null;
     let pendingProgress = 0;
@@ -127,7 +60,7 @@ export default function Hero() {
 
         if (rafId === null) {
           rafId = requestAnimationFrame(() => {
-            renderFrame?.(pendingProgress);
+            renderFrameRef.current?.(pendingProgress);
             rafId = null;
           });
         }
@@ -145,15 +78,90 @@ export default function Hero() {
       },
     });
 
-    // This pin is created one render after mount (behind the matchMedia
-    // gate above), so re-measure the pinned sections below it once this
-    // pin-spacer is actually in the layout.
-    ScrollTrigger.refresh();
-
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
-      cleanupMedia();
       st.kill();
+    };
+  }, []);
+
+  // Wires the actual frame renderer once the media element for this device
+  // class has rendered.
+  useEffect(() => {
+    if (isMobile === null) return;
+
+    if (isMobile) {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+
+      const loaded: boolean[] = new Array(MOBILE_FRAME_COUNT).fill(false);
+      const frames: HTMLImageElement[] = [];
+      let lastDrawn = -1;
+
+      const drawCover = (img: HTMLImageElement) => {
+        const s = Math.max(canvas.width / img.width, canvas.height / img.height);
+        const w = img.width * s;
+        const h = img.height * s;
+        ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+      };
+
+      renderFrameRef.current = (progress) => {
+        let idx = Math.round(progress * (MOBILE_FRAME_COUNT - 1));
+        // if the exact frame hasn't arrived yet, show the nearest earlier
+        // one so the scrub degrades to slightly coarser, never to frozen
+        while (idx > 0 && !loaded[idx]) idx--;
+        if (!loaded[idx] || idx === lastDrawn) return;
+        lastDrawn = idx;
+        drawCover(frames[idx]);
+      };
+
+      for (let i = 0; i < MOBILE_FRAME_COUNT; i++) {
+        const img = new Image();
+        img.onload = () => {
+          loaded[i] = true;
+          if (i === 0) renderFrameRef.current?.(0);
+        };
+        img.src = mobileFrameSrc(i);
+        frames.push(img);
+      }
+
+      return () => {
+        renderFrameRef.current = null;
+      };
+    }
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    const onError = () => setVideoFailed(true);
+    video.addEventListener("error", onError);
+    video.currentTime = 0;
+
+    let seek: ((value: number) => void) | null = null;
+    const ensureSeekReady = () => {
+      if (seek || !video.duration) return;
+      seek = gsap.quickTo(video, "currentTime", {
+        duration: 0.4,
+        ease: "power2.out",
+      });
+    };
+    if (video.readyState >= 1) ensureSeekReady();
+    video.addEventListener("loadedmetadata", ensureSeekReady);
+
+    renderFrameRef.current = (progress) => {
+      ensureSeekReady();
+      if (seek && video.duration) seek(progress * video.duration);
+    };
+
+    return () => {
+      video.removeEventListener("loadedmetadata", ensureSeekReady);
+      video.removeEventListener("error", onError);
+      renderFrameRef.current = null;
     };
   }, [isMobile]);
 
