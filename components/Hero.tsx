@@ -31,15 +31,13 @@ export default function Hero() {
     // Scroll-scrubbing a video (seeking currentTime frame-by-frame) relies
     // on the browser repainting on every seek of a paused video — several
     // mobile browsers don't reliably do that, leaving the frame frozen no
-    // matter how correctly currentTime is being set. Rather than fight that,
-    // mobile just autoplays the video normally on loop; only desktop gets
-    // the precise scroll-scrub.
+    // matter how correctly currentTime is being set. Playing, however,
+    // repaints fine everywhere — so on mobile the video plays only while
+    // the user is actively scrolling and pauses the moment they stop.
+    // Only desktop gets the precise seek-based scrub.
     const isMobile = window.matchMedia("(max-width: 768px)").matches;
-    if (isMobile) {
-      video.play().catch(() => {});
-    } else {
-      video.currentTime = 0;
-    }
+    video.currentTime = 0;
+    let pauseTimer: ReturnType<typeof setTimeout> | null = null;
 
     let rafId: number | null = null;
     let pendingProgress = 0;
@@ -68,7 +66,13 @@ export default function Hero() {
       onUpdate: (self) => {
         pendingProgress = self.progress;
 
-        if (!isMobile && rafId === null) {
+        if (isMobile) {
+          if (self.progress > 0 && self.progress < 1) {
+            if (video.paused) video.play().catch(() => {});
+            if (pauseTimer) clearTimeout(pauseTimer);
+            pauseTimer = setTimeout(() => video.pause(), 200);
+          }
+        } else if (rafId === null) {
           rafId = requestAnimationFrame(() => {
             ensureSeekReady();
             if (seek && video.duration) {
@@ -95,6 +99,7 @@ export default function Hero() {
       video.removeEventListener("loadedmetadata", ensureSeekReady);
       video.removeEventListener("error", onError);
       if (rafId) cancelAnimationFrame(rafId);
+      if (pauseTimer) clearTimeout(pauseTimer);
       st.kill();
     };
   }, []);

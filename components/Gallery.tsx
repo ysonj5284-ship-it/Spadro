@@ -36,12 +36,12 @@ export default function Gallery() {
     const st = ScrollTrigger.create({
       trigger: pinRef.current,
       start: "top top",
-      end: `+=${(n - 1) * 100}%`,
+      end: `+=${(n - 1) * 65}%`,
       pin: true,
-      scrub: 0.6,
+      scrub: 0.5,
       snap: {
         snapTo: 1 / (n - 1),
-        duration: 0.3,
+        duration: 0.25,
         ease: "power1.inOut",
       },
       onUpdate: (self) => {

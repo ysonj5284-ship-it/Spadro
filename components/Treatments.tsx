@@ -67,12 +67,12 @@ export default function Treatments() {
     const st = ScrollTrigger.create({
       trigger: pinRef.current,
       start: "top top",
-      end: `+=${(n - 1) * 180}%`,
+      end: `+=${(n - 1) * 100}%`,
       pin: true,
-      scrub: 1.2,
+      scrub: 0.8,
       snap: {
         snapTo: 1 / (n - 1),
-        duration: 0.5,
+        duration: 0.35,
         ease: "power1.inOut",
       },
       onUpdate: (self) => {
