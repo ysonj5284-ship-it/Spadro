@@ -16,6 +16,14 @@ export default function Hero() {
   const landingRef = useRef<HTMLDivElement>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [debug, setDebug] = useState<string[]>([]);
+  const debugOn =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
+
+  const log = (msg: string) => {
+    if (!debugOn) return;
+    setDebug((prev) => [...prev.slice(-9), `${new Date().toISOString().slice(11, 19)} ${msg}`]);
+  };
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -25,9 +33,12 @@ export default function Hero() {
     const video = videoRef.current;
     if (!video) return;
 
+    log(`mount readyState=${video.readyState} src=${video.currentSrc.split("/").pop()}`);
+
     let rafId: number | null = null;
     let pendingProgress = 0;
     let seek: ((value: number) => void) | null = null;
+    let lastLoggedTenth = -1;
 
     // Mobile Safari (and some Android browsers) won't reliably apply
     // programmatic currentTime seeks until the video has actually been
@@ -35,25 +46,36 @@ export default function Hero() {
     // prime it here, then pause immediately and rewind to frame 0. This
     // runs in parallel with pin setup below rather than blocking it.
     const primePromise = video.play();
-    (primePromise ?? Promise.resolve()).catch(() => {}).then(() => {
-      video.pause();
-      video.currentTime = 0;
-    });
+    (primePromise ?? Promise.resolve())
+      .then(() => log("prime play() resolved"))
+      .catch((e) => log(`prime play() rejected: ${e?.name || e}`))
+      .then(() => {
+        video.pause();
+        video.currentTime = 0;
+      });
 
     // The quickTo tween needs video.duration, which isn't available until
     // metadata loads — but it's created lazily inside onUpdate/here rather
     // than gating the whole pin setup behind that event.
     const ensureSeekReady = () => {
       if (seek || !video.duration) return;
+      log(`seek ready, duration=${video.duration.toFixed(2)}`);
       seek = gsap.quickTo(video, "currentTime", {
         duration: 0.4,
         ease: "power2.out",
       });
     };
+    const onLoadedMetadata = () => {
+      log("loadedmetadata fired");
+      ensureSeekReady();
+    };
     if (video.readyState >= 1) ensureSeekReady();
-    video.addEventListener("loadedmetadata", ensureSeekReady);
+    video.addEventListener("loadedmetadata", onLoadedMetadata);
 
-    const onError = () => setVideoFailed(true);
+    const onError = () => {
+      log(`video error: ${video.error?.code} ${video.error?.message}`);
+      setVideoFailed(true);
+    };
     video.addEventListener("error", onError);
 
     // The pin is created synchronously on mount, same as every other
@@ -71,6 +93,14 @@ export default function Hero() {
       pin: true,
       onUpdate: (self) => {
         pendingProgress = self.progress;
+
+        const tenth = Math.floor(self.progress * 10);
+        if (tenth !== lastLoggedTenth) {
+          lastLoggedTenth = tenth;
+          log(
+            `progress=${self.progress.toFixed(2)} isActive=${self.isActive} pinned=${!!st?.pin} t=${video.currentTime.toFixed(2)}/${video.duration ? video.duration.toFixed(2) : "?"}`
+          );
+        }
 
         if (rafId === null) {
           rafId = requestAnimationFrame(() => {
@@ -96,7 +126,7 @@ export default function Hero() {
     });
 
     return () => {
-      video.removeEventListener("loadedmetadata", ensureSeekReady);
+      video.removeEventListener("loadedmetadata", onLoadedMetadata);
       video.removeEventListener("error", onError);
       if (rafId) cancelAnimationFrame(rafId);
       st.kill();
@@ -155,6 +185,14 @@ export default function Hero() {
           </p>
         </div>
       </div>
+
+      {debugOn && (
+        <div className="pointer-events-none absolute inset-x-2 bottom-2 z-50 max-h-40 overflow-hidden rounded bg-black/80 p-2 font-mono text-[9px] leading-tight text-lime-400">
+          {debug.map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
