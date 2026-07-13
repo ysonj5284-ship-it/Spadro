@@ -39,6 +39,30 @@ export default function Hero() {
     let pendingProgress = 0;
     let seek: ((value: number) => void) | null = null;
     let lastLoggedTenth = -1;
+    let lastNudge = 0;
+    let nudging = false;
+
+    // Some mobile browsers (notably Android Chrome) update a paused video's
+    // currentTime property without ever repainting the visible frame —
+    // seeking numerically "succeeds" but the screen stays frozen. Briefly
+    // playing and pausing forces the decoder to actually paint the frame at
+    // the new position. Throttled so it doesn't fire on every rAF tick.
+    const nudge = () => {
+      const now = performance.now();
+      if (nudging || now - lastNudge < 120) return;
+      nudging = true;
+      lastNudge = now;
+      video
+        .play()
+        .then(() => {
+          video.pause();
+          log(`nudged at t=${video.currentTime.toFixed(2)}`);
+        })
+        .catch((e) => log(`nudge play() rejected: ${e?.name || e}`))
+        .finally(() => {
+          nudging = false;
+        });
+    };
 
     // Mobile Safari (and some Android browsers) won't reliably apply
     // programmatic currentTime seeks until the video has actually been
@@ -107,6 +131,7 @@ export default function Hero() {
             ensureSeekReady();
             if (seek && video.duration) {
               seek(pendingProgress * video.duration);
+              nudge();
             }
             rafId = null;
           });
